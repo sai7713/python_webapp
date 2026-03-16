@@ -1,20 +1,133 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+# Docker Application Setup
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+A small web app that runs inside Docker. This guide shows how to build the
+Docker image and run the app locally.
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+All commands below are written for **bash**.
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+---
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+## Prerequisites
+
+### 1. Install Docker
+
+Make sure Docker is installed on your machine.
+
+### 2. Start Docker
+
+Launch Docker Desktop and ensure the Docker engine is running.
+
+### 3. Login to Docker Hub (optional)
+
+Open a terminal and run:
+
+```bash
+docker login
+```
+
+You will be prompted to enter your **Docker Hub username** and **password**.
+
+> **Note:** You only need to log in if you plan to push images to Docker Hub.
+
+---
+
+## 🚀 Quick Start
+
+### 0. Prepare the working folder
+
+Make sure the following files are together in the same folder before running
+the Docker commands:
+
+- `Dockerfile`
+- `requirements.txt`
+- `main.py`
+
+If they are in different locations, copy them into one directory and run the
+commands below from there.
+
+### 1. Build the Docker image
+
+Run the following command in the project directory:
+
+```bash
+docker build -t testing .
+```
+
+This builds a Docker image using the `Dockerfile` in the current directory and
+tags it as **testing**.
+
+### 2. Push the image to Docker Hub (optional)
+
+If you want to share the image or deploy it from another machine, push it to
+Docker Hub.
+
+1. Tag the image for your Docker Hub repository (replace `YOUR_USERNAME`):
+
+```bash
+docker tag testing YOUR_USERNAME/testing:latest
+```
+
+2. Push the image:
+
+```bash
+docker push YOUR_USERNAME/testing:latest
+```
+
+> Make sure you ran `docker login` first (see “Login to Docker Hub”).
+
+---
+
+### 3. Run the container
+
+Start the container using:
+
+```bash
+docker run -d -p 8080:5000 testing
+```
+
+Explanation:
+
+- `-d` runs the container in **detached mode**
+- `-p 8080:5000` maps **port 8080 on your machine** to **port 5000 inside the
+  container**
+
+> **Note:** On some macOS setups, port `5000` can already be in use. Mapping to
+> `8080` avoids port conflicts.
+
+### 3. Verify the application
+
+Open your browser and visit:
+
+- http://localhost:8080
+- http://localhost:8080/inventory
+
+If everything is working correctly, the application should load in your
+browser.
+
+---
+
+## Useful Docker commands
+
+Check running containers:
+
+```bash
+docker ps
+```
+
+Check all containers (including stopped ones):
+
+```bash
+docker ps -a
+```
+
+Stop a running container:
+
+```bash
+docker stop <container-id>
+```
+
+Remove a container:
+
+```bash
+docker rm <container-id>
+```
