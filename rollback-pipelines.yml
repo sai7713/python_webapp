@@ -1,0 +1,49 @@
+parameters:
+  - name: imageTag
+    displayName: Image Tag to Deploy
+    type: string
+    default: latest
+
+trigger: none
+
+variables:
+  - group: "notifications_vg"
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: DeploySpecificVersion
+    displayName: Deploy Specific Image Version
+
+    jobs:
+      - deployment: Deploy
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureWebAppContainer@1
+                  displayName: Deploy specific image
+                  inputs:
+                    azureSubscription: webapp_APS
+                    appName: inventory-dev
+                    containers: devapp1.azurecr.io/python_webapp:${{ parameters.imageTag }}
+
+  - stage: Notify
+    displayName: Send Deployment Notification
+    dependsOn: DeploySpecificVersion
+    condition: succeeded()
+    jobs:
+      - job: SendNotification
+        steps:
+          - task: PowerShell@2
+            displayName: Notify Teams
+            inputs:
+              targetType: filePath
+              filePath: scripts/notifications.ps1
+              arguments: >
+                -WebhookUrl "$(teamsWebhook)"
+                -TriggeredBy "$(Build.RequestedFor)"
+                -Version "${{ parameters.imageTag }}"
+                -Environment "Production"

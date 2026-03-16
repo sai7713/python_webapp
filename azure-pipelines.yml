@@ -1,0 +1,141 @@
+trigger:
+  - main
+  - feature-test
+parameters:
+  - name: rollback
+    displayName: "Rollback deployment?"
+    type: boolean
+    default: false
+
+variables:
+  - group: "app_config_vg"
+  - group: "azure_infra_vg"
+  - group: "notifications_vg"
+  - name: deployImage
+    value: $(acrHost)/$(repositoryName)
+  - name: imageTag
+    value: "$(Build.SourceBranchName)-$(Build.BuildNumber)"
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: BuildAndPush
+    displayName: Build and Push Image
+    condition: eq('${{ parameters.rollback }}', false)
+    jobs:
+      - job: Build
+        steps:
+          - task: Docker@2
+            displayName: Build and Push Docker Image
+            inputs:
+              containerRegistry: $(containerRegistry)
+              repository: $(repositoryName)
+              command: buildAndPush
+              Dockerfile: Dockerfile
+              tags: |
+                $(imageTag)
+
+  - stage: Test
+    displayName: Run Unit Tests
+    dependsOn: BuildAndPush
+    condition: succeeded()
+    jobs:
+      - job: RunTests
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.10"
+              addToPath: true
+
+          - script: |
+              pip install -r requirements.txt
+              pytest
+            displayName: Run pytest
+
+  - stage: Deploy
+    displayName: Deploy to staging slot
+    dependsOn: Test
+    condition: succeeded()
+    jobs:
+      - job: Deploy
+        steps:
+          - task: AzureWebAppContainer@1
+            displayName: Deploy to Azure Web App
+            inputs:
+              azureSubscription: $(azureSubscription)
+              appName: $(webAppName)
+              slotName: $(slotName)
+              imageName: $(deployImage):$(imageTag)
+
+  - stage: HealthCheck
+    dependsOn: Deploy
+    condition: succeeded()
+    jobs:
+      - job: HealthCheck
+        dependsOn: []
+        steps:
+          - task: PowerShell@2
+            displayName: Application Health Check
+            inputs:
+              filePath: scripts/health-check.ps1
+              arguments: "-url $(healthCheckUrl)"
+
+  - stage: Swap
+    displayName: Swap staging to production
+    dependsOn: HealthCheck
+    condition: succeeded()
+    jobs:
+      - deployment: Swap
+        displayName: Swap Slots
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureAppServiceManage@0
+                  displayName: Swap staging slot with production
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    WebAppName: $(webAppName)
+                    ResourceGroupName: $(resourceGroup)
+                    SourceSlot: $(slotName)
+                    Action: Swap Slots
+
+  - stage: Rollback
+    displayName: Rollback_production
+    condition: eq('${{ parameters.rollback }}', true)
+
+    jobs:
+      - job: Rollback_to_previous
+        displayName: Rollback to previous version
+
+        steps:
+          - task: AzureAppServiceManage@0
+            displayName: Swap production back to staging
+            inputs:
+              azureSubscription: $(azureSubscription)
+              WebAppName: $(webAppName)
+              ResourceGroupName: $(resourceGroup)
+              SourceSlot: $(slotName)
+              Action: Swap Slots
+
+  - stage: Notify
+    displayName: Send Deployment Notification
+    dependsOn: [Swap, Rollback]
+    condition: or(succeeded('Swap'), succeeded('Rollback'))
+    jobs:
+      - job: SendNotification
+        steps:
+          - task: PowerShell@2
+            displayName: Notify Teams
+            inputs:
+              targetType: filePath
+              filePath: scripts/notifications.ps1
+              arguments: >
+                -WebhookUrl "$(teamsWebhook)"
+                -TriggeredBy "$(Build.RequestedFor)"
+                -Version "$(imageTag)"
+                -Environment "Production"
